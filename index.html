@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>退款数据分析平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .glass-card { background: rgba(255,255,255,0.95); border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); }
+        .stat-card { background: #fff; border-radius: 12px; padding: 20px; transition: all 0.3s; }
+        .stat-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.15); }
+        .tab-btn { padding: 12px 24px; border-radius: 8px; font-weight: 500; transition: all 0.3s; background: white; color: #64748b; }
+        .tab-btn.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px; text-align: left; font-size: 13px; }
+        .data-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
+        .data-table tr:hover td { background: #f8fafc; }
+        .filter-select { padding: 10px 16px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 14px; background: white; }
+        .filter-select:focus { outline: none; border-color: #667eea; }
+        .search-input { padding: 10px 16px 10px 40px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 14px; width: 260px; }
+        .search-wrapper { position: relative; }
+        .search-wrapper i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+        .chart-container { position: relative; height: 280px; }
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+        .badge-danger { background: #fee2e2; color: #991b1b; }
+        .badge-warning { background: #fef3c7; color: #92400e; }
+        .badge-info { background: #dbeafe; color: #1e40af; }
+        .pagination { display: flex; gap: 8px; justify-content: center; margin-top: 20px; }
+        .pagination button { padding: 8px 14px; border: 1px solid #e2e8f0; background: white; border-radius: 6px; cursor: pointer; }
+        .pagination button.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-color: transparent; }
+        .scroll-container { max-height: 450px; overflow-y: auto; }
+        .upload-area { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 16px 24px; text-align: center; transition: all 0.3s; background: #f8fafc; cursor: pointer; }
+        .upload-area:hover { border-color: #667eea; background: #f0f4ff; }
+        .upload-area.has-files { border-color: #22c55e; background: #f0fdf4; }
+        .file-tag { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #e0e7ff; border-radius: 20px; font-size: 13px; color: #4338ca; margin: 4px; }
+        .toast { position: fixed; bottom: 20px; right: 20px; padding: 14px 20px; border-radius: 10px; color: white; font-weight: 500; z-index: 1000; animation: slideIn 0.3s; }
+        .toast.success { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); }
+        .toast.error { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    </style>
+</head>
+<body>
+    <div class="container mx-auto px-4 py-6">
+        <!-- Header -->
+        <header class="glass-card p-5 mb-5">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                        <i class="fas fa-chart-line text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-800">退款数据分析平台</h1>
+                        <p class="text-sm text-gray-500">聊天室 & 游戏退款数据监控</p>
+                    </div>
+                </div>
+                
+                <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                    <input type="file" id="fileInput" multiple accept=".xlsx,.xls" style="display:none" onchange="handleFileSelect(event)">
+                    <i class="fas fa-cloud-upload-alt text-2xl text-indigo-500 mb-1"></i>
+                    <p class="text-sm text-gray-600">点击或拖拽上传文档</p>
+                    <div id="fileList" class="mt-2 flex flex-wrap justify-center"></div>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <p class="text-xs text-gray-500">更新时间</p>
+                        <p class="text-sm font-semibold text-gray-700" id="updateTime">2026-03-25</p>
+                    </div>
+                    <button onclick="refreshData()" class="p-2 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Tabs -->
+        <div class="flex gap-3 mb-5">
+            <button class="tab-btn active" onclick="switchTab('chatroom')" id="tab-chatroom">
+                <i class="fas fa-comments mr-2"></i>聊天室
+            </button>
+            <button class="tab-btn" onclick="switchTab('game')" id="tab-game">
+                <i class="fas fa-gamepad mr-2"></i>游戏
+            </button>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+            <div class="stat-card">
+                <p class="text-xs text-gray-500 mb-1">退款总金额</p>
+                <p class="text-xl font-bold text-gray-800" id="totalAmount">$0</p>
+            </div>
+            <div class="stat-card">
+                <p class="text-xs text-gray-500 mb-1">退款笔数</p>
+                <p class="text-xl font-bold text-gray-800" id="totalCount">0</p>
+            </div>
+            <div class="stat-card">
+                <p class="text-xs text-gray-500 mb-1">退款人数</p>
+                <p class="text-xl font-bold text-gray-800" id="uniqueUsers">0</p>
+            </div>
+            <div class="stat-card">
+                <p class="text-xs text-gray-500 mb-1">平均间隔</p>
+                <p class="text-xl font-bold text-gray-800" id="avgInterval">0天</p>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+            <div class="glass-card p-5">
+                <h3 class="text-base font-bold text-gray-800 mb-3"><i class="fas fa-chart-pie mr-2 text-indigo-500"></i>退款原因</h3>
+                <div class="chart-container"><canvas id="reasonChart"></canvas></div>
+            </div>
+            <div class="glass-card p-5">
+                <h3 class="text-base font-bold text-gray-800 mb-3"><i class="fas fa-chart-bar mr-2 text-indigo-500"></i>渠道分布</h3>
+                <div class="chart-container"><canvas id="channelChart"></canvas></div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="glass-card p-4 mb-4">
+            <div class="flex flex-wrap items-center gap-3">
+                <select class="filter-select" id="monthFilter" onchange="applyFilters()"><option value="">全部月份</option></select>
+                <select class="filter-select" id="reasonFilter" onchange="applyFilters()"><option value="">全部原因</option></select>
+                <select class="filter-select" id="channelFilter" onchange="applyFilters()"><option value="">全部渠道</option></select>
+                <div class="search-wrapper ml-auto">
+                    <i class="fas fa-search"></i>
+                    <input type="text" class="search-input" id="searchInput" placeholder="搜索用户ID..." oninput="applyFilters()">
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="glass-card p-5">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-base font-bold text-gray-800"><i class="fas fa-table mr-2 text-indigo-500"></i>详细数据</h3>
+                <button onclick="exportData()" class="px-3 py-2 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600">
+                    <i class="fas fa-download mr-1"></i>导出
+                </button>
+            </div>
+            <div class="scroll-container">
+                <table class="data-table" id="dataTable">
+                    <thead><tr id="tableHeader"></tr></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+            <div class="pagination" id="pagination"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentTab = 'chatroom', summaryData = {}, detailData = {}, filteredData = [];
+        let currentPage = 1, pageSize = 15, reasonChart, channelChart, uploadedFiles = { chatroom: null, game: null };
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadData();
+            setupDragAndDrop();
+        });
+
+        function setupDragAndDrop() {
+            const uploadArea = document.getElementById('uploadArea');
+            uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.style.borderColor = '#667eea'; });
+            uploadArea.addEventListener('dragleave', () => { uploadArea.style.borderColor = '#cbd5e1'; });
+            uploadArea.addEventListener('drop', (e) => { e.preventDefault(); uploadArea.style.borderColor = '#cbd5e1'; handleFiles(e.dataTransfer.files); });
+        }
+
+        function handleFileSelect(event) { handleFiles(event.target.files); }
+
+        function handleFiles(files) {
+            Array.from(files).forEach(file => {
+                const fileName = file.name.toLowerCase();
+                if (fileName.includes('聊天室')) { uploadedFiles.chatroom = file; showToast('聊天室文件已上传', 'success'); }
+                else if (fileName.includes('游戏')) { uploadedFiles.game = file; showToast('游戏文件已上传', 'success'); }
+            });
+            updateFileList();
+            if (uploadedFiles.chatroom && uploadedFiles.game) processUploadedFiles();
+        }
+
+        function updateFileList() {
+            const fileList = document.getElementById('fileList');
+            const uploadArea = document.getElementById('uploadArea');
+            let html = '';
+            if (uploadedFiles.chatroom) html += '<span class="file-tag"><i class="fas fa-comments"></i>聊天室</span>';
+            if (uploadedFiles.game) html += '<span class="file-tag"><i class="fas fa-gamepad"></i>游戏</span>';
+            fileList.innerHTML = html;
+            uploadArea.classList.toggle('has-files', uploadedFiles.chatroom || uploadedFiles.game);
+        }
+
+        function showToast(message, type) {
+            const toast = document.createElement('div');
+            toast.className = 'toast ' + type;
+            toast.innerHTML = '<i class="fas fa-' + (type === 'success' ? 'check-circle' : 'exclamation-circle') + ' mr-2"></i>' + message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2500);
+        }
+
+        async function processUploadedFiles() {
+            showToast('正在处理数据...', 'success');
+            try {
+                if (uploadedFiles.chatroom) {
+                    const chatroomData = await readExcelFile(uploadedFiles.chatroom);
+                    const processed = processChatroomData(chatroomData);
+                    detailData.chatroom = processed.records;
+                    summaryData.chatroom = processed.summary;
+                }
+                if (uploadedFiles.game) {
+                    const gameData = await readExcelFile(uploadedFiles.game, true);
+                    const processed = processGameData(gameData);
+                    detailData.game = processed.records;
+                    summaryData.game = processed.summary;
+                }
+                updateOverview(); updateCharts(); updateFilters(); applyFilters();
+                document.getElementById('updateTime').textContent = new Date().toLocaleDateString('zh-CN');
+                showToast('数据更新成功!', 'success');
+            } catch (error) {
+                showToast('数据处理失败', 'error');
+            }
+        }
+
+        function readExcelFile(file, hasMultipleSheets = false) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        let sheetName = workbook.SheetNames[0];
+                        if (hasMultipleSheets && workbook.SheetNames.length > 1) {
+                            sheetName = workbook.SheetNames.find(n => n.includes('Sheet2')) || workbook.SheetNames[1];
+                        }
+                        const worksheet = workbook.Sheets[sheetName];
+                        resolve(XLSX.utils.sheet_to_json(worksheet));
+                    } catch (error) { reject(error); }
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function processChatroomData(data) {
+            const filtered = data.filter(row => row['是否沙盒账号'] !== '是');
+            const processed = filtered.map(row => {
+                const refundTime = parseDate(row['退款时间']);
+                const orderTime = parseDate(row['充值下单时间']);
+                const intervalDays = refundTime && orderTime ? Math.floor((refundTime - orderTime) / 86400000) : 0;
+                const month = refundTime ? refundTime.toISOString().slice(0, 7) : '';
+                return {
+                    '退款时间': formatDateTime(refundTime), '订单号': row['订单号'] || '',
+                    '用户ID': String(row['用户ID'] || ''), '显示ID': String(row['显示ID'] || ''),
+                    '退款类型': row['退款类型'] || '', '金额': parseFloat(row['金额']) || 0,
+                    '渠道': row['支付类型'] || '', '充值下单时间': formatDateTime(orderTime),
+                    '退款原因': row['退款原因'] || '', '间隔天数': intervalDays, '月份': month
+                };
+            });
+            return calculateSummary(processed, '用户ID');
+        }
+
+        function processGameData(data) {
+            const filtered = data.filter(row => row['是否沙盒账号'] === '非沙盒');
+            const processed = filtered.map(row => {
+                const refundTime = parseDate(row['退款时间']);
+                const orderTime = parseDate(row['充值下单时间']);
+                const intervalDays = refundTime && orderTime ? Math.floor((refundTime - orderTime) / 86400000) : 0;
+                const month = refundTime ? refundTime.toISOString().slice(0, 7) : '';
+                return {
+                    '退款时间': formatDateTime(refundTime), '账号': String(row['账号'] || ''),
+                    '退单类型': row['退单类型'] || '', '金额': parseFloat(row['金额(美元)']) || 0,
+                    '渠道': row['渠道'] || '', '充值下单时间': formatDateTime(orderTime),
+                    '退款原因': row['退款原因'] || '', '间隔天数': intervalDays, '月份': month
+                };
+            });
+            return calculateSummary(processed, '账号');
+        }
+
+        function calculateSummary(processed, userIdKey) {
+            const totalAmount = processed.reduce((sum, r) => sum + r['金额'], 0);
+            const uniqueUsers = new Set(processed.map(r => r[userIdKey])).size;
+            const avgInterval = processed.reduce((sum, r) => sum + r['间隔天数'], 0) / processed.length;
+            const channels = {}, reasons = {}, types = {}, monthlyData = {};
+            processed.forEach(r => {
+                const ch = r['渠道'] || '未知'; channels[ch] = (channels[ch] || 0) + 1;
+                const reason = r['退款原因'] || '未知'; reasons[reason] = (reasons[reason] || 0) + 1;
+                const type = r[currentTab === 'chatroom' ? '退款类型' : '退单类型'] || '未知'; types[type] = (types[type] || 0) + 1;
+                const month = r['月份'];
+                if (!monthlyData[month]) monthlyData[month] = { 月份: month, 退款人数: new Set(), 退款金额: 0, 退款笔数: 0, 间隔天数: [] };
+                monthlyData[month].退款人数.add(r[userIdKey]);
+                monthlyData[month].退款金额 += r['金额'];
+                monthlyData[month].退款笔数++;
+                monthlyData[month].间隔天数.push(r['间隔天数']);
+            });
+            const monthlyArray = Object.values(monthlyData).map(m => ({
+                月份: m.月份, 退款人数: m.退款人数.size,
+                退款金额: Math.round(m.退款金额 * 100) / 100,
+                退款笔数: m.退款笔数,
+                平均间隔天数: Math.round(m.间隔天数.reduce((a, b) => a + b, 0) / m.间隔天数.length * 10) / 10
+            }));
+            return {
+                records: processed,
+                summary: {
+                    total_refund_amount: Math.round(totalAmount * 100) / 100,
+                    total_refund_count: processed.length,
+                    unique_users: uniqueUsers,
+                    avg_interval_days: Math.round(avgInterval * 10) / 10,
+                    monthly_data: monthlyArray, reasons, channels, types
+                }
+            };
+        }
+
+        function parseDate(dateStr) {
+            if (!dateStr) return null;
+            const s = String(dateStr);
+            let match = s.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+            if (match) return new Date(match[3], match[1] - 1, match[2], match[4], match[5], match[6]);
+            match = s.match(/(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+            if (match) return new Date(match[1], match[2] - 1, match[3], match[4], match[5], match[6]);
+            const d = new Date(dateStr);
+            return isNaN(d.getTime()) ? null : d;
+        }
+
+        function formatDateTime(date) { return date ? date.toISOString().slice(0, 19).replace('T', ' ') : ''; }
+
+        async function loadData() {
+            try {
+                const res1 = await fetch('refund_summary.json');
+                summaryData = await res1.json();
+                const res2 = await fetch('refund_detail.json');
+                detailData = await res2.json();
+                updateOverview(); updateCharts(); updateFilters(); applyFilters();
+            } catch (e) { useEmbeddedData(); }
+        }
+
+        function useEmbeddedData() {
+            summaryData = {
+                "chatroom": {
+                    "total_refund_amount": 11983.97, "total_refund_count": 736, "unique_users": 75, "avg_interval_days": 34.1,
+                    "monthly_data": [{"月份": "2026-02", "退款人数": 75, "退款金额": 11983.97, "退款笔数": 736, "平均间隔天数": 34.1}],
+                    "reasons": {"退款": 259, "Free_fraud": 210, "其他": 191, "欺诈": 37, "有缺陷": 29, "Accidental_purchase": 6, "Not_recevied": 3, "后悔": 1},
+                    "channels": {"Google": 671, "苹果": 65},
+                    "types": {"宝石": 619, "礼包": 116, "月卡": 1}
+                },
+                "game": {
+                    "total_refund_amount": 33343.57, "total_refund_count": 1763, "unique_users": 363, "avg_interval_days": 23.8,
+                    "monthly_data": [{"月份": "2026-02", "退款人数": 363, "退款金额": 33343.57, "退款笔数": 1763, "平均间隔天数": 23.8}],
+                    "reasons": {"Free_fraud": 463, "退款": 352, "Accidental_purchase": 212, "欺骗": 174, "后悔": 93, "有缺陷": 15, "Not_received": 14},
+                    "channels": {"google": 1323, "苹果": 440},
+                    "types": {"金币": 1282, "常驻礼包": 101, "通行证": 82, "存钱罐": 68, "大乐透礼包": 64, "礼包": 63, "钻石": 40, "月卡": 16, "回归礼包": 16, "VIP月卡": 14, "破冰礼包": 6, "付费转盘": 5, "周卡": 4, "破冰礼包2": 2}
+                }
+            };
+            detailData = { "chatroom": [], "game": [] };
+            updateOverview(); updateCharts(); updateFilters(); applyFilters();
+        }
+
+        function switchTab(tab) {
+            currentTab = tab; currentPage = 1;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('tab-' + tab).classList.add('active');
+            updateOverview(); updateCharts(); updateFilters(); applyFilters();
+        }
+
+        function updateOverview() {
+            const data = summaryData[currentTab];
+            if (!data) return;
+            document.getElementById('totalAmount').textContent = '$' + data.total_refund_amount.toLocaleString();
+            document.getElementById('totalCount').textContent = data.total_refund_count;
+            document.getElementById('uniqueUsers').textContent = data.unique_users;
+            document.getElementById('avgInterval').textContent = data.avg_interval_days + '天';
+        }
+
+        function updateCharts() {
+            const data = summaryData[currentTab];
+            if (!data) return;
+            if (reasonChart) reasonChart.destroy();
+            if (channelChart) channelChart.destroy();
+
+            const reasonCtx = document.getElementById('reasonChart').getContext('2d');
+            const reasonLabels = Object.keys(data.reasons);
+            const reasonValues = Object.values(data.reasons);
+            const colors = ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe', '#43e97b', '#fa709a', '#fee140'];
+            reasonChart = new Chart(reasonCtx, {
+                type: 'doughnut',
+                data: { labels: reasonLabels, datasets: [{ data: reasonValues, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12 } } } }
+            });
+
+            const channelCtx = document.getElementById('channelChart').getContext('2d');
+            const channelLabels = Object.keys(data.channels);
+            const channelValues = Object.values(data.channels);
+            channelChart = new Chart(channelCtx, {
+                type: 'bar',
+                data: { labels: channelLabels, datasets: [{ label: '退款笔数', data: channelValues, backgroundColor: ['#667eea', '#764ba2'], borderRadius: 6 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' } }, x: { grid: { display: false } } } }
+            });
+        }
+
+        function updateFilters() {
+            const data = summaryData[currentTab];
+            if (!data) return;
+            const monthSelect = document.getElementById('monthFilter');
+            monthSelect.innerHTML = '<option value="">全部月份</option>';
+            if (data.monthly_data) data.monthly_data.forEach(m => { monthSelect.innerHTML += '<option value="' + m.月份 + '">' + m.月份 + '</option>'; });
+            const reasonSelect = document.getElementById('reasonFilter');
+            reasonSelect.innerHTML = '<option value="">全部原因</option>';
+            if (data.reasons) Object.keys(data.reasons).forEach(r => { reasonSelect.innerHTML += '<option value="' + r + '">' + r + '</option>'; });
+            const channelSelect = document.getElementById('channelFilter');
+            channelSelect.innerHTML = '<option value="">全部渠道</option>';
+            if (data.channels) Object.keys(data.channels).forEach(c => { channelSelect.innerHTML += '<option value="' + c + '">' + c + '</option>'; });
+        }
+
+        function applyFilters() {
+            const month = document.getElementById('monthFilter').value;
+            const reason = document.getElementById('reasonFilter').value;
+            const channel = document.getElementById('channelFilter').value;
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const data = detailData[currentTab] || [];
+            filteredData = data.filter(item => {
+                if (month && item['月份'] !== month) return false;
+                if (reason && item['退款原因'] !== reason) return false;
+                if (channel && item['渠道'] !== channel) return false;
+                if (search) {
+                    const searchFields = currentTab === 'chatroom' ? [item['用户ID'], item['订单号']] : [item['账号']];
+                    return searchFields.some(f => f && f.toString().toLowerCase().includes(search));
+                }
+                return true;
+            });
+            currentPage = 1;
+            renderTable();
+            renderPagination();
+        }
+
+        function renderTable() {
+            const thead = document.getElementById('tableHeader');
+            const tbody = document.getElementById('tableBody');
+            const columns = currentTab === 'chatroom' ? [
+                { key: '退款时间', label: '退款时间' }, { key: '用户ID', label: '用户ID' },
+                { key: '退款类型', label: '退款类型' }, { key: '金额', label: '金额' },
+                { key: '渠道', label: '渠道' }, { key: '间隔天数', label: '间隔天数' }, { key: '退款原因', label: '退款原因' }
+            ] : [
+                { key: '退款时间', label: '退款时间' }, { key: '账号', label: '账号' },
+                { key: '退单类型', label: '退单类型' }, { key: '金额', label: '金额' },
+                { key: '渠道', label: '渠道' }, { key: '间隔天数', label: '间隔天数' }, { key: '退款原因', label: '退款原因' }
+            ];
+            thead.innerHTML = columns.map(c => '<th>' + c.label + '</th>').join('');
+            const start = (currentPage - 1) * pageSize;
+            const end = start + pageSize;
+            const pageData = filteredData.slice(start, end);
+            tbody.innerHTML = pageData.map(item => {
+                return '<tr>' + columns.map(c => {
+                    let value = item[c.key];
+                    if (c.key === '金额') value = '$' + parseFloat(value).toFixed(2);
+                    if (c.key === '退款原因') return '<td><span class="badge ' + getBadgeClass(value) + '">' + (value || '-') + '</span></td>';
+                    return '<td>' + (value || '-') + '</td>';
+                }).join('') + '</tr>';
+            }).join('');
+        }
+
+        function getBadgeClass(reason) {
+            if (!reason) return 'badge-info';
+            const r = reason.toLowerCase();
+            if (r.includes('fraud') || r.includes('欺诈') || r.includes('欺骗')) return 'badge-danger';
+            if (r.includes('accidental') || r.includes('后悔')) return 'badge-warning';
+            return 'badge-info';
+        }
+
+        function renderPagination() {
+            const totalPages = Math.ceil(filteredData.length / pageSize);
+            const pagination = document.getElementById('pagination');
+            if (totalPages <= 1) { pagination.innerHTML = ''; return; }
+            let html = '<button onclick="goToPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '><i class="fas fa-chevron-left"></i></button>';
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+                    html += '<button class="' + (i === currentPage ? 'active' : '') + '" onclick="goToPage(' + i + ')">' + i + '</button>';
+                } else if (i === currentPage - 2 || i === currentPage + 2) html += '<span>...</span>';
+            }
+            html += '<button onclick="goToPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '><i class="fas fa-chevron-right"></i></button>';
+            pagination.innerHTML = html;
+        }
+
+        function goToPage(page) {
+            const totalPages = Math.ceil(filteredData.length / pageSize);
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            renderTable();
+            renderPagination();
+        }
+
+        function exportData() {
+            if (filteredData.length === 0) return;
+            const headers = Object.keys(filteredData[0]);
+            const rows = filteredData.map(obj => headers.map(h => '"' + (obj[h] || '').toString().replace(/"/g, '""') + '"').join(','));
+            const csvContent = '\ufeff' + headers.join(',') + '\n' + rows.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = currentTab + '_refund_' + new Date().toISOString().slice(0, 10) + '.csv';
+            link.click();
+        }
+
+        function refreshData() {
+            loadData();
+            document.getElementById('updateTime').textContent = new Date().toLocaleDateString('zh-CN');
+        }
+    </script>
+</body>
+</html>
